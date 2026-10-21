@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fruit & Vegetable Freshness Detection</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Fruit &amp; Vegetable Freshness Detection System</h1>
+    <p class="subtitle">Upload a photo of a single fruit or vegetable. A trained CNN (MobileNetV2, transfer learning) predicts what it is and whether it is fresh or spoiled.</p>
+  </header>
+
+  <main>
+    {% if model_error %}
+      <div class="alert error"><strong>Model not available.</strong> {{ model_error }}</div>
+    {% endif %}
+
+    <section class="card">
+      <h2>1. Upload an image</h2>
+      <form action="{{ url_for('predict') }}" method="post" enctype="multipart/form-data" id="upload-form">
+        <label class="dropzone" for="image-input">
+          <img id="preview" src="{{ image_url or '' }}" alt="Image preview" class="{{ '' if image_url else 'hidden' }}">
+          <span id="drop-text" class="{{ 'hidden' if image_url else '' }}">Click to choose a JPG / PNG image</span>
+        </label>
+        <input type="file" id="image-input" name="image" accept=".jpg,.jpeg,.png,.bmp,.webp,image/*">
+        <p id="file-name" class="muted"></p>
+        <button type="submit" id="detect-btn" {{ 'disabled' if model_error }}>Detect Freshness</button>
+      </form>
+      {% if samples %}
+      <details class="samples">
+        <summary>Or pick one of the test images (never used in training)</summary>
+        <div class="sample-grid">
+          {% for name in samples %}
+            <img src="{{ url_for('sample_file', filename=name) }}" alt="{{ name }}" title="{{ name }}" data-name="{{ name }}" class="sample" loading="lazy">
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </section>
+
+    {% if error %}
+      <div class="alert error" id="error-message">{{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+    <section class="card result {{ 'fresh' if result.freshness == 'Fresh' else 'spoiled' }}" id="result">
+      <h2>2. Prediction</h2>
+      <div class="result-grid">
+        <div><span class="label">Fruit/Vegetable</span><span class="value" id="produce">{{ result.produce }}</span></div>
+        <div><span class="label">Freshness</span><span class="value badge" id="freshness">{{ 'FRESH' if result.freshness == 'Fresh' else 'SPOILED' }}</span></div>
+        <div><span class="label">Confidence</span><span class="value" id="confidence">{{ '%.2f' % (result.confidence * 100) }}%</span></div>
+      </div>
+
+      {% if result.low_confidence %}
+        <div class="alert warning" id="low-confidence">
+          <strong>Low confidence ({{ '%.2f' % (result.confidence * 100) }}% &lt; {{ '%.0f' % (threshold * 100) }}%).</strong>
+          The image may not belong to the supported fruit/vegetable categories, or its freshness is unclear. Treat this prediction with caution.
+        </div>
+      {% endif %}
+
+      <p class="muted">Probability fresh: {{ '%.1f' % (result.fresh_probability * 100) }}% &nbsp;|&nbsp; probability spoiled: {{ '%.1f' % (result.spoiled_probability * 100) }}%</p>
+
+      <h3>Top predictions</h3>
+      <table>
+        <thead><tr><th>Class</th><th>Probability</th></tr></thead>
+        <tbody>
+          {% for item in result.top_k %}
+          <tr>
+            <td>{{ item.freshness }} {{ item.produce }}</td>
+            <td><div class="bar"><div style="width: {{ '%.1f' % (item.probability * 100) }}%"></div></div>{{ '%.2f' % (item.probability * 100) }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+
+    <section class="card">
+      <h2>Supported categories</h2>
+      <p class="muted">The model only knows the classes it was trained on. Any other fruit, vegetable or object will still be forced into one of these classes, so check the confidence.</p>
+      <ul class="classes">
+        {% for produce, states in classes %}
+          <li><strong>{{ produce }}</strong> <span class="muted">({{ states | join(' / ') }})</span></li>
+        {% endfor %}
+      </ul>
+      <p class="muted small">Limitation: the model judges only the visible outside of the item in the photo. It cannot see internal spoilage, and it can be wrong under unusual lighting or backgrounds.</p>
+    </section>
+  </main>
+
+  <footer>College project &middot; PyTorch + Flask &middot; predictions come from the trained model in <code>models/</code></footer>
+
+  <script>
+    // Show a preview of the chosen image before it is uploaded
+    const input = document.getElementById('image-input');
+    const preview = document.getElementById('preview');
+    const dropText = document.getElementById('drop-text');
+    const fileName = document.getElementById('file-name');
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      if (!file) return;
+      fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+      if (!file.type.startsWith('image/')) {
+        preview.classList.add('hidden');
+        dropText.classList.remove('hidden');
+        dropText.textContent = 'This does not look like an image - the server will reject it.';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = e => {
+        preview.src = e.target.result;
+        preview.classList.remove('hidden');
+        dropText.classList.add('hidden');
+      };
+      reader.readAsDataURL(file);
+    });
+    // Clicking a sample image loads it into the file input, exactly like choosing it by hand
+    document.querySelectorAll('img.sample').forEach(img => {
+      img.addEventListener('click', async () => {
+        const blob = await fetch(img.src).then(r => r.blob());
+        const file = new File([blob], img.dataset.name, { type: blob.type || 'image/jpeg' });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change'));
+      });
+    });
+    document.getElementById('upload-form').addEventListener('submit', () => {
+      const btn = document.getElementById('detect-btn');
+      btn.textContent = 'Detecting...';
+    });
+  </script>
+</body>
+</html>

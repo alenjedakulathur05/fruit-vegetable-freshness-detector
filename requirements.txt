@@ -1,0 +1,16 @@
+# Fruit & Vegetable Freshness Detection System - Python 3.12, Windows 11
+#
+# PyTorch with CUDA 12.8 comes from PyTorch's own package index (the Windows
+# builds on PyPI are CPU-only). CUDA 12.8 builds support RTX 50-series GPUs
+# (e.g. RTX 5050). They also run on computers without an NVIDIA GPU (CPU mode).
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.10.0+cu128
+torchvision==0.25.0+cu128
+
+numpy==2.4.4
+pandas==3.0.2
+pillow==12.2.0
+scikit-learn==1.8.0
+matplotlib==3.10.9
+seaborn==0.13.2
+flask==3.1.3
